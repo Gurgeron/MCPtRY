@@ -86,6 +86,18 @@ Replace `/absolute/path/to/build/server.js` with the actual path to your built s
 
 3. Restart Claude for Desktop.
 
+## User Interface
+
+The Google Docs MCP server features a user-friendly, conversational interface that:
+
+- Presents document information in a clean, readable format
+- Uses natural language responses rather than raw API data
+- Formats dates in a human-readable way
+- Provides helpful follow-up questions after actions
+- Never exposes sensitive data like OAuth tokens
+
+This interface styling is designed to match other Claude MCP integrations like Notion, providing a consistent and pleasant user experience.
+
 ## Development
 
 ### Project Structure
@@ -161,3 +173,17 @@ If you're having trouble with the Google Docs API:
 ## License
 
 MIT
+
+## Environment Variables
+
+Create a `.env` file at the project root (or export the variables in your shell) with the following keys:
+
+```env
+# OAuth 2.0 client credentials – **JSON string** of the credentials file
+GOOGLE_DOCS_CREDENTIALS_JSON={...}
+
+# OAuth token – **JSON string** returned by the OAuth consent flow
+GOOGLE_DOCS_TOKEN_JSON={...}
+```
+
+If these variables are set, the server will **not** attempt to read `credentials.json` or `token.json` from disk.

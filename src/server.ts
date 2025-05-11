@@ -8,6 +8,7 @@ import * as process from "process";
 import { z } from "zod";
 import { docs_v1, drive_v3 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import 'dotenv/config';
 
 // Set up OAuth2.0 scopes - we need full access to Docs and Drive
 const SCOPES = [
@@ -17,7 +18,8 @@ const SCOPES = [
 ];
 
 // Resolve paths relative to the project root
-const PROJECT_ROOT = path.resolve(path.join(path.dirname(new URL(import.meta.url).pathname), '..'));
+const PROJECT_ROOT_RAW = path.dirname(new URL(import.meta.url).pathname);
+const PROJECT_ROOT = decodeURIComponent(path.resolve(path.join(PROJECT_ROOT_RAW, '..')));
 
 // The token path is where we'll store the OAuth credentials
 const TOKEN_PATH = path.join(PROJECT_ROOT, "token.json");
@@ -25,17 +27,58 @@ const TOKEN_PATH = path.join(PROJECT_ROOT, "token.json");
 // The credentials path is where your OAuth client credentials are stored
 const CREDENTIALS_PATH = path.join(PROJECT_ROOT, "credentials.json");
 
+console.log("PROJECT_ROOT_RAW:", PROJECT_ROOT_RAW);
+console.log("PROJECT_ROOT:", PROJECT_ROOT);
+console.log("CREDENTIALS_PATH:", CREDENTIALS_PATH);
+console.log("TOKEN_PATH:", TOKEN_PATH);
+
 // Create an MCP server instance
 const server = new McpServer({
   name: "google-docs",
   version: "1.0.0",
 });
 
+// ---------------------------------------------------------------------------
+// 🌱 Environment configuration
+// ---------------------------------------------------------------------------
+// We prefer reading sensitive credentials from environment variables so that
+// they can be injected at runtime by container orchestrators (or a local
+// `.env` file which is git-ignored).  This avoids persisting tokens in the
+// workspace and keeps secrets out of version control.
+//
+// Supported variables:
+//   ‑ GOOGLE_DOCS_TOKEN_JSON       – JSON string with OAuth access + refresh token
+//   ‑ GOOGLE_DOCS_CREDENTIALS_JSON – JSON string with the client credentials
+//
+// If the variables are **not** defined we gracefully fall back to the legacy
+// `credentials.json` / `token.json` files on disk so existing users are not
+// broken.
+
 /**
  * Load saved credentials if they exist, otherwise trigger the OAuth flow
  */
 async function authorize() {
   try {
+    // 1) --------------------------------------------------------------
+    // Attempt to build the OAuth2 client **purely from env variables**.
+    // -----------------------------------------------------------------
+    const rawCreds = process.env.GOOGLE_DOCS_CREDENTIALS_JSON;
+    const rawToken = process.env.GOOGLE_DOCS_TOKEN_JSON;
+
+    if (rawCreds && rawToken) {
+      console.error("🔑 Loading Google Docs credentials from environment …");
+      const keys = JSON.parse(rawCreds);
+      const token = JSON.parse(rawToken);
+
+      const { client_id, client_secret, redirect_uris } = keys.installed ?? keys.web ?? {};
+      const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uris?.[0]);
+      oAuth2Client.setCredentials(token);
+      return oAuth2Client;
+    }
+
+    // 2) --------------------------------------------------------------
+    // Legacy disk-based flow (credentials.json / token.json)
+    // -----------------------------------------------------------------
     // Load client secrets from a local file
     console.error("Reading credentials from:", CREDENTIALS_PATH);
     const content = fs.readFileSync(CREDENTIALS_PATH, "utf-8");
@@ -50,9 +93,10 @@ async function authorize() {
     // Create an OAuth2 client
     const oAuth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
     
-    // Check if we have previously stored a token
+    // Check if we have previously stored a token…
+    // (Skip if we already loaded from env variables).
     if (fs.existsSync(TOKEN_PATH)) {
-      console.error("Found existing token, attempting to use it...");
+      console.error("Found existing token on disk, attempting to use it…");
       const token = JSON.parse(fs.readFileSync(TOKEN_PATH, "utf-8"));
       oAuth2Client.setCredentials(token);
       return oAuth2Client;
@@ -127,17 +171,27 @@ server.resource(
       });
 
       const files = response.data.files || [];
-      let content = "Google Docs in your Drive:\n\n";
+      
+      // Format the response in a user-friendly way
+      let content = "";
       
       if (files.length === 0) {
-        content += "No Google Docs found.";
+        content = "I couldn't find any Google Docs in your Drive.";
       } else {
-        files.forEach((file: any) => {
-          content += `Title: ${file.name}\n`;
-          content += `ID: ${file.id}\n`;
-          content += `Created: ${file.createdTime}\n`;
-          content += `Last Modified: ${file.modifiedTime}\n\n`;
+        content = `I found ${files.length} documents in your Google Drive:\n\n`;
+        
+        files.forEach((file: any, index: number) => {
+          // Format dates to be more readable
+          const created = new Date(file.createdTime).toLocaleDateString();
+          const modified = new Date(file.modifiedTime).toLocaleDateString();
+          
+          content += `${index + 1}. "${file.name}"\n`;
+          content += `   - Created: ${created}\n`;
+          content += `   - Last edited: ${modified}\n`;
+          content += `   - ID: ${file.id}\n\n`;
         });
+        
+        content += "Would you like me to open any specific document or help you with something else?";
       }
 
       return {
@@ -151,7 +205,7 @@ server.resource(
       return {
         contents: [{
           uri: uri.href,
-          text: `Error listing documents: ${error}`,
+          text: `I encountered an issue while listing your documents: ${error instanceof Error ? error.message : String(error)}`,
         }]
       };
     }
@@ -169,10 +223,17 @@ server.resource(
       });
       
       // Extract the document content
-      let content = `Document: ${doc.data.title}\n\n`;
+      const document = doc.data;
+      const title = document.title || "Untitled Document";
+      
+      // Format the response header with document metadata
+      let content = `I've opened "${title}" for you.\n\n`;
+      
+      // Add document ID
+      content += `Document ID: ${docId}\n\n`;
+      content += `--- Document Content ---\n\n`;
       
       // Process the document content from the complex data structure
-      const document = doc.data;
       if (document && document.body && document.body.content) {
         let textContent = "";
         
@@ -188,7 +249,12 @@ server.resource(
         });
         
         content += textContent;
+      } else {
+        content += "This document appears to be empty.";
       }
+      
+      content += "\n\n--- End of Document ---\n\n";
+      content += "Would you like me to help you edit this document or perform another action?";
 
       return {
         contents: [{
@@ -201,7 +267,7 @@ server.resource(
       return {
         contents: [{
           uri: uri.href,
-          text: `Error getting document ${docId}: ${error}`,
+          text: `I couldn't open the document (ID: ${docId}). The error was: ${error instanceof Error ? error.message : String(error)}`,
         }]
       };
     }
@@ -251,7 +317,13 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Document created successfully!\nTitle: ${title}\nDocument ID: ${documentId}\nYou can now reference this document using: googledocs://${documentId}`,
+            text: `I've created a new document titled "${title}" for you!
+
+You can access it with document ID: ${documentId}
+
+${content ? "I've also added your initial content to the document." : "The document is currently empty and ready for you to add content."} 
+
+Would you like me to help you with anything else?`,
           },
         ],
       };
@@ -261,7 +333,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating document: ${error}`,
+            text: `I encountered an issue while creating your document: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
         isError: true,
@@ -286,13 +358,15 @@ server.tool(
       }
       
       const documentId = docId.toString();
+
+      // First, get the document title
+      const doc = await docsClient.documents.get({
+        documentId,
+      });
+      
+      const title = doc.data.title || "Untitled Document";
       
       if (replaceAll) {
-        // First, get the document to find its length
-        const doc = await docsClient.documents.get({
-          documentId,
-        });
-        
         // Calculate the document length
         let documentLength = 1; // Start at 1 (the first character position)
         if (doc.data.body && doc.data.body.content) {
@@ -332,11 +406,6 @@ server.tool(
           },
         });
       } else {
-        // Append content to the end of the document
-        const doc = await docsClient.documents.get({
-          documentId,
-        });
-        
         // Calculate the document length to append at the end
         let documentLength = 1; // Start at 1 (the first character position)
         if (doc.data.body && doc.data.body.content) {
@@ -373,7 +442,11 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Document updated successfully!\nDocument ID: ${docId}`,
+            text: `I've ${replaceAll ? "replaced the content in" : "added new content to"} "${title}" (ID: ${docId}).
+
+${replaceAll ? "The document now contains only the new content you provided." : "Your new content has been appended to the end of the document."}
+
+Would you like me to help you with anything else?`,
           },
         ],
       };
@@ -383,7 +456,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error updating document: ${error}`,
+            text: `I encountered an issue while updating your document: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
         isError: true,
@@ -406,8 +479,8 @@ server.tool(
         pageSize: 10,
       });
       
-      // Add response logging for debugging
-      console.error("Drive API Response:", JSON.stringify(response, null, 2));
+      // Log only to server console, not to the user
+      console.error("Drive API Response received successfully");
       
       // Add better response validation
       if (!response || !response.data) {
@@ -417,17 +490,24 @@ server.tool(
       // Add null check and default to empty array
       const files = (response.data.files || []);
       
-      let content = `Search results for "${query}":\n\n`;
+      // Create a user-friendly response
+      let content = `I found ${files.length} document(s) matching "${query}":\n\n`;
       
       if (files.length === 0) {
-        content += "No documents found matching your query.";
+        content = `I couldn't find any documents matching "${query}" in your Google Drive.`;
       } else {
-        files.forEach((file: any) => {
-          content += `Title: ${file.name}\n`;
-          content += `ID: ${file.id}\n`;
-          content += `Created: ${file.createdTime}\n`;
-          content += `Last Modified: ${file.modifiedTime}\n\n`;
+        files.forEach((file: any, index: number) => {
+          // Format dates to be more readable
+          const created = new Date(file.createdTime).toLocaleDateString();
+          const modified = new Date(file.modifiedTime).toLocaleDateString();
+          
+          content += `${index + 1}. "${file.name}"\n`;
+          content += `   - Created: ${created}\n`;
+          content += `   - Last edited: ${modified}\n`;
+          content += `   - ID: ${file.id}\n\n`;
         });
+        
+        content += `Would you like me to open any of these documents or perform another action?`;
       }
       
       return {
@@ -440,16 +520,11 @@ server.tool(
       };
     } catch (error) {
       console.error("Error searching documents:", error);
-      // Include more detailed error information
-      const errorMessage = error instanceof Error 
-          ? `${error.message}\n${error.stack}` 
-          : String(error);
-          
       return {
         content: [
           {
             type: "text",
-            text: `Error searching documents: ${errorMessage}`,
+            text: `I encountered an issue while searching for documents: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
         isError: true,
@@ -468,7 +543,7 @@ server.tool(
     try {
       // Get the document title first for confirmation
       const doc = await docsClient.documents.get({ documentId: docId });
-      const title = doc.data.title;
+      const title = doc.data.title || "Untitled Document";
       
       // Delete the document
       await driveClient.files.delete({
@@ -479,7 +554,11 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Document "${title}" (ID: ${docId}) has been successfully deleted.`,
+            text: `I've deleted "${title}" from your Google Drive.
+
+The document (ID: ${docId}) has been permanently removed.
+
+Is there anything else you'd like me to help you with?`,
           },
         ],
       };
@@ -489,7 +568,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error deleting document: ${error}`,
+            text: `I couldn't delete the document (ID: ${docId}). The error was: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
         isError: true,

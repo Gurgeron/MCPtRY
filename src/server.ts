@@ -557,6 +557,70 @@ Is there anything else you'd like me to help you with?`,
   }
 );
 
+// Tool to directly insert text into a document
+server.tool(
+  "insert-text",
+  {
+    documentId: z.string().describe("The ID of the document to update"),
+    text: z.string().describe("The text to insert into the document"),
+  },
+  async ({ documentId, text }) => {
+    try {
+      if (!documentId) {
+        throw new Error("Document ID is required");
+      }
+      
+      // Get the document title first
+      const doc = await docsClient.documents.get({
+        documentId,
+      });
+      
+      const title = doc.data.title || "Untitled Document";
+      
+      // Insert the text at the beginning of the document
+      await docsClient.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: [
+            {
+              insertText: {
+                location: {
+                  index: 1,
+                },
+                text: text,
+              },
+            },
+          ],
+        },
+      });
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `I've inserted the text into "${title}" (ID: ${documentId}).
+
+The content has been added to the beginning of the document.
+
+Would you like me to help you with anything else?`,
+          },
+        ],
+      };
+    } catch (error) {
+      console.error("Error inserting text into document:", error);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `I encountered an issue while inserting text into the document: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
 // PROMPTS
 
 // Prompt for document creation

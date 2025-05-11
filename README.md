@@ -132,6 +132,7 @@ To add new features to the MCP server:
 
 - `create-doc` - Creates a new Google Doc with the specified title and optional content
 - `update-doc` - Updates an existing Google Doc with new content (append or replace)
+- `insert-text` - Directly inserts text into a document without Notion or other integrations
 - `search-docs` - Searches for Google Docs containing specific text
 - `delete-doc` - Deletes a Google Doc by ID
 

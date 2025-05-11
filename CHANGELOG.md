@@ -4,6 +4,12 @@ All notable changes to the Google Docs MCP Server will be documented in this fil
 
 ## [Unreleased]
 
+## [1.0.3] - 2025-05-11
+
+### Added
+- Added new `insert-text` tool for direct text insertion into documents
+- Simplified document text insertion with better error handling
+
 ## [1.0.2] - 2025-05-11
 
 ### Fixed

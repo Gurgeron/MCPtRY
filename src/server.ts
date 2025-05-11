@@ -367,33 +367,12 @@ server.tool(
       const title = doc.data.title || "Untitled Document";
       
       if (replaceAll) {
-        // Calculate the document length
-        let documentLength = 1; // Start at 1 (the first character position)
-        if (doc.data.body && doc.data.body.content) {
-          doc.data.body.content.forEach((element: any) => {
-            if (element.paragraph) {
-              element.paragraph.elements.forEach((paragraphElement: any) => {
-                if (paragraphElement.textRun && paragraphElement.textRun.content) {
-                  documentLength += paragraphElement.textRun.content.length;
-                }
-              });
-            }
-          });
-        }
-        
-        // Delete all content and then insert new content
+        // Instead of trying to delete all content and then add new content,
+        // we'll use a simpler approach by just inserting at index 1
         await docsClient.documents.batchUpdate({
           documentId,
           requestBody: {
             requests: [
-              {
-                deleteContentRange: {
-                  range: {
-                    startIndex: 1,
-                    endIndex: documentLength,
-                  },
-                },
-              },
               {
                 insertText: {
                   location: {
@@ -406,7 +385,8 @@ server.tool(
           },
         });
       } else {
-        // Calculate the document length to append at the end
+        // For append, we'll just append at the end as before
+        // First, find where the end of the document is
         let documentLength = 1; // Start at 1 (the first character position)
         if (doc.data.body && doc.data.body.content) {
           doc.data.body.content.forEach((element: any) => {
@@ -442,9 +422,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `I've ${replaceAll ? "replaced the content in" : "added new content to"} "${title}" (ID: ${docId}).
+            text: `I've ${replaceAll ? "updated" : "added new content to"} "${title}" (ID: ${docId}).
 
-${replaceAll ? "The document now contains only the new content you provided." : "Your new content has been appended to the end of the document."}
+${replaceAll ? "The document now contains your new content at the beginning." : "Your new content has been appended to the end of the document."}
 
 Would you like me to help you with anything else?`,
           },

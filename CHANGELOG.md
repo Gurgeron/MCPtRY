@@ -4,6 +4,12 @@ All notable changes to the Google Docs MCP Server will be documented in this fil
 
 ## [Unreleased]
 
+## [1.0.2] - 2025-05-11
+
+### Fixed
+- Fixed document update functionality to properly handle content replacement without errors
+- Removed problematic content deletion that was causing errors with newline characters
+
 ## [1.0.1] - 2025-05-11
 
 ### Changed

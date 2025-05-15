@@ -1,5 +1,7 @@
 # Google Docs MCP Server
 
+[![smithery badge](https://smithery.ai/badge/@Gurgeron/MCPtRY)](https://smithery.ai/server/@Gurgeron/MCPtRY)
+
 This is a Model Context Protocol (MCP) server that allows you to connect to Google Docs through Claude. With this server, you can:
 
 - List all Google Docs in your Drive
@@ -17,6 +19,15 @@ This is a Model Context Protocol (MCP) server that allows you to connect to Goog
 
 ## Setup
 
+### Installing via Smithery
+
+To install Google Docs Integration Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@Gurgeron/MCPtRY):
+
+```bash
+npx -y @smithery/cli install @Gurgeron/MCPtRY --client claude
+```
+
+### Manual Installation
 1. Clone this repository and navigate to the project directory:
 
 ```bash

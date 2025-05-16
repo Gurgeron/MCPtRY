@@ -1,0 +1,24 @@
+# Smithery configuration file: https://smithery.ai/docs/build/project-config
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - googleDocsCredentialsJson
+    properties:
+      googleDocsCredentialsJson:
+        type: string
+        description: OAuth 2.0 client credentials JSON string for Google APIs
+      googleDocsTokenJson:
+        type: string
+        description: OAuth 2.0 token JSON string
+  commandFunction:
+    # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'node', args: ['build/server.js'], env: { GOOGLE_DOCS_CREDENTIALS_JSON: config.googleDocsCredentialsJson, GOOGLE_DOCS_TOKEN_JSON: config.googleDocsTokenJson } })
+  exampleConfig:
+    googleDocsCredentialsJson: '{"installed":{"client_id":"your-client-id","client_secret":"your-client-secret","redirect_uris":["urn:ietf:wg:oauth:2.0:oob","http://localhost"]}}'
+    googleDocsTokenJson: '{"access_token":"ya29.a0AfH6SM...","refresh_token":"1//0g...","scope":"https://www.googleapis.com/auth/documents
+      https://www.googleapis.com/auth/drive","token_type":"Bearer","expiry_date":1700000000000}'
